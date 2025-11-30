@@ -9,7 +9,7 @@ import Foundation
 enum GeniusError: Error { case noPath, noLyrics }
 
 struct GeniusLyrics {
-    private static let token = "YOUR_GENIUS_TOKEN"   // <-- paste here
+    private static let token = "tsfrKGlg9pjvk0d3HlHms-Br6x9E7Pg3dooOBDDAJ5seZFxyKj7rtQNoPw8uAxBT"
 
     /// - Returns: plain-text lyrics or nil
     static func fetch(for track: String, artist: String) async throws -> String {

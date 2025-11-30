@@ -251,7 +251,8 @@ struct ContentView: View {
 
         do {
             print("📦 Requesting Live Activity…")              // ← ADD
-            activity = try Activity.request(attributes: attributes, contentState: initial, pushType: nil)
+            let content = ActivityContent(state: initial, staleDate: nil)
+            activity = try Activity.request(attributes: attributes, content: content, pushType: nil)
             activityStarted = true
             print("✅ Live Activity started – updating lyrics…")
             Task {
@@ -274,8 +275,9 @@ struct ContentView: View {
 // MARK: - ASWebAuthenticationPresentationContextProviding
 final class ContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.windows.first ?? ASPresentationAnchor()
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            return windowScene.windows.first ?? ASPresentationAnchor()
+        }
+        return ASPresentationAnchor()
     }
 }

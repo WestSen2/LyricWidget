@@ -78,7 +78,7 @@ extension LyricWidgetLiveActivity {
                     currentLyric: line,
                     elapsedTime: "0:\(5 * index + 5)"
                 )
-                await activity.update(using: state)
+                await activity.update(state)
                 try? await Task.sleep(nanoseconds: 5 * 1_000_000_000)
             }
 

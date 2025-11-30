@@ -9,74 +9,6 @@ import WidgetKit
 import SwiftUI
 import Foundation
 
-// MARK: - Shared Types (needed by widget extension)
-struct SpotifyTrack: Codable {
-    let name: String
-    let artists: [Artist]
-    let album: Album?
-    
-    struct Artist: Codable { let name: String }
-    
-    struct Album: Codable {
-        let images: [Image]
-        struct Image: Codable { let url: String }
-    }
-}
-
-struct SharedSpotifyToken {
-    private static let suiteName = "group.com.WestL.LyricsWidget"
-    private static let tokenKey  = "SpotifyAccessToken"
-    
-    static func get() -> String? {
-        UserDefaults(suiteName: suiteName)?.string(forKey: tokenKey)
-    }
-}
-
-enum GeniusError: Error { case noPath, noLyrics }
-
-struct GeniusLyrics {
-    private static let token = "tsfrKGlg9pjvk0d3HlHms-Br6x9E7Pg3dooOBDDAJ5seZFxyKj7rtQNoPw8uAxBT"
-    
-    static func fetch(for track: String, artist: String) async throws -> String {
-        let searchURLString = "https://api.genius.com/search?q=\(track.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")%20\(artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
-        guard let url = URL(string: searchURLString) else { throw GeniusError.noPath }
-        
-        var req = URLRequest(url: url)
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let (data, _) = try await URLSession.shared.data(for: req)
-        
-        guard
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let response = json["response"] as? [String: Any],
-            let hits = response["hits"] as? [[String: Any]],
-            let first = hits.first,
-            let result = first["result"] as? [String: Any],
-            let path = result["path"] as? String
-        else { throw GeniusError.noPath }
-        
-        let pageURL = URL(string: "https://genius.com\(path)")!
-        let (html, _) = try await URLSession.shared.data(from: pageURL)
-        guard let htmlString = String(data: html, encoding: .utf8),
-              let lyrics = parseLyricsDiv(htmlString)
-        else { throw GeniusError.noLyrics }
-        
-        return lyrics
-    }
-    
-    private static func parseLyricsDiv(_ html: String) -> String? {
-        let pattern = #"<div[^>]*data-lyrics-container[^>]*>(.*?)</div>"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]),
-              let match = regex.firstMatch(in: html, options: [], range: NSRange(html.startIndex..., in: html))
-        else { return nil }
-        
-        let substring = (html as NSString).substring(with: match.range(at: 1))
-        return substring.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression, range: nil)
-                   .replacingOccurrences(of: "&quot;", with: "\"")
-                   .replacingOccurrences(of: "&#x27;", with: "'")
-                   .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-}
-
 struct Provider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> SimpleEntry {
         SimpleEntry(
@@ -150,7 +82,7 @@ struct Provider: AppIntentTimelineProvider {
         
         // Fetch lyrics from Genius
         let lyrics = try? await GeniusLyrics.fetch(for: track.name, artist: track.artists.first?.name ?? "")
-        let lyricLines = lyrics?.components(separatedBy: .newlines).filter { !$0.isEmpty } ?? []
+        let lyricLines = lyrics?.components(separatedBy: CharacterSet.newlines).filter { !$0.isEmpty } ?? []
         
         return SimpleEntry(
             date: Date(),
