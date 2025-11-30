@@ -28,7 +28,8 @@ struct LyricWidgetHelper {
                     currentLyric: line,
                     elapsedTime: "0:\(5 * index + 5)"
                 )
-                await activity.update(newState)
+                let content = ActivityContent(state: newState, staleDate: nil)
+                await activity.update(content)
                 try? await Task.sleep(nanoseconds: 5 * 1_000_000_000)
             }
 

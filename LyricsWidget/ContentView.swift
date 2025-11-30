@@ -275,9 +275,17 @@ struct ContentView: View {
 // MARK: - ASWebAuthenticationPresentationContextProviding
 final class ContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-            return windowScene.windows.first ?? ASPresentationAnchor()
+        // Get the first available window scene and its window
+        if let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first {
+            if let window = windowScene.windows.first {
+                return window
+            }
+            // If no window exists, create one using the window scene
+            return ASPresentationAnchor(windowScene: windowScene)
         }
-        return ASPresentationAnchor()
+        // Fallback: create a basic window (should rarely happen)
+        return UIWindow()
     }
 }
