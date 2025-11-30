@@ -143,6 +143,19 @@ struct ContentView: View {
             }
             .buttonStyle(LoginButtonStyle(color: .green))
 
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("📱 Add Widget to Home Screen")
+                    .font(.headline)
+                Text("1. Long press on your home screen\n2. Tap the + button\n3. Search for 'Lyrics Widget'\n4. Select a size and add it")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding()
+            .background(Color.gray.opacity(0.1))
+            .cornerRadius(10)
+
             Button(activityStarted ? "Live Activity Started" : "Start Live Activity") {
                 startLiveActivity()
             }

@@ -216,6 +216,9 @@ struct LyricWidget: Widget {
             LyricWidgetEntryView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
         }
+        .configurationDisplayName("Lyrics Widget")
+        .description("Shows lyrics for the currently playing Spotify track, synced with playback time.")
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
 
