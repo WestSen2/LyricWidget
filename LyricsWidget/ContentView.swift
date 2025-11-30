@@ -212,6 +212,8 @@ struct ContentView: View {
                 self.accessToken = token
                 SharedSpotifyToken.save(token)
                 print("🎉 Spotify access-token obtained")
+                // Reload widget timeline immediately after saving token
+                WidgetCenter.shared.reloadTimelines(ofKind: "LyricWidgetWidget")
                 self.fetchCurrentlyPlaying()
             }
         }.resume()
@@ -231,7 +233,9 @@ struct ContentView: View {
                     self.songTitle = trackName
                     self.artistName = artistName
                     SharedSpotifyToken.save(self.accessToken)
+                    // Reload widget to show the new track
                     WidgetCenter.shared.reloadTimelines(ofKind: "LyricWidgetWidget")
+                    print("📱 Widget timeline reloaded")
                 case .failure(let error):
                     print("⚠️  Failed to fetch track: \(error.localizedDescription)")
                 }

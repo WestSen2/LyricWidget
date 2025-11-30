@@ -5,7 +5,7 @@ import SwiftUI
 struct LyricsWidgetBundle: WidgetBundle {
     @WidgetBundleBuilder
     var body: some Widget {
+        LyricWidget()
         LyricWidgetLiveActivity()
-        // You can add more widgets here if needed
     }
 }
