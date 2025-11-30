@@ -36,11 +36,11 @@ struct Provider: AppIntentTimelineProvider {
         var entries: [SimpleEntry] = []
         let now = Date()
         
-        // Create entries for the next 2 minutes, updating every 5 seconds
+        // Create entries for the next 3 minutes, updating every 3 seconds for smoother scrolling
         // Each entry will calculate the correct lyric based on playback position
-        for i in 0..<24 { // 24 entries = 2 minutes at 5-second intervals
-            let entryDate = now.addingTimeInterval(TimeInterval(i * 5))
-            let estimatedProgressMs = (currentEntry.playbackPositionMs ?? 0) + (i * 5000) // Add 5 seconds per entry
+        for i in 0..<60 { // 60 entries = 3 minutes at 3-second intervals
+            let entryDate = now.addingTimeInterval(TimeInterval(i * 3))
+            let estimatedProgressMs = (currentEntry.playbackPositionMs ?? 0) + (i * 3000) // Add 3 seconds per entry
             
             // Calculate which lyric line to show based on playback position
             let lyricIndex = calculateLyricIndex(
@@ -62,8 +62,8 @@ struct Provider: AppIntentTimelineProvider {
             entries.append(entry)
         }
         
-        // Refresh every 10 seconds to keep synced with playback
-        let nextUpdate = Calendar.current.date(byAdding: .second, value: 10, to: now) ?? now
+        // Refresh every 5 seconds for smoother scrolling
+        let nextUpdate = Calendar.current.date(byAdding: .second, value: 5, to: now) ?? now
         return Timeline(entries: entries, policy: .after(nextUpdate))
     }
     
@@ -178,30 +178,58 @@ struct SimpleEntry: TimelineEntry {
 
 struct LyricWidgetEntryView : View {
     var entry: Provider.Entry
+    
+    // Get visible lyrics with current line in center
+    private var visibleLyrics: [(text: String, isCurrent: Bool)] {
+        guard !entry.allLyrics.isEmpty else {
+            return [(entry.currentLyric, true)]
+        }
+        
+        // Find current line index
+        let currentIndex = entry.allLyrics.firstIndex(of: entry.currentLyric) ?? 0
+        
+        // Show 2 lines before, current line, and 2 lines after (5 total)
+        let startIndex = max(0, currentIndex - 2)
+        let endIndex = min(entry.allLyrics.count, currentIndex + 3)
+        
+        var visible: [(text: String, isCurrent: Bool)] = []
+        for i in startIndex..<endIndex {
+            visible.append((entry.allLyrics[i], i == currentIndex))
+        }
+        
+        return visible
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             // Song info
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(entry.songTitle)
                     .font(.headline)
                     .fontWeight(.bold)
                     .lineLimit(1)
                 
                 Text(entry.artistName)
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             }
             
             Divider()
+                .padding(.vertical, 2)
             
-            // Current lyric
-            Text(entry.currentLyric)
-                .font(.body)
-                .lineLimit(nil)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            // Scrolling lyrics view
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(visibleLyrics.enumerated()), id: \.offset) { _, lyric in
+                    Text(lyric.text)
+                        .font(lyric.isCurrent ? .body.bold() : .subheadline)
+                        .foregroundColor(lyric.isCurrent ? .primary : .secondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

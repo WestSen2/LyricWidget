@@ -80,7 +80,11 @@ struct GeniusLyrics {
                                      text.lowercased().contains("translation") ||
                                      text.lowercased().contains("embed") ||
                                      text.lowercased().contains("genius") ||
-                                     text.lowercased().contains("about genius")
+                                     text.lowercased().contains("about genius") ||
+                                     text.lowercased().contains("hot songs") ||
+                                     text.lowercased().contains("trending") ||
+                                     text.lowercased().contains("popular") ||
+                                     text.lowercased().contains("you might also like")
             
             if text.count > 5 && // Longer minimum to filter out short metadata
                !text.allSatisfy({ $0.isNumber || $0.isWhitespace || $0.isPunctuation }) &&
@@ -106,7 +110,10 @@ struct GeniusLyrics {
                     !line.lowercased().contains("contributor") &&
                     !line.lowercased().contains("translation") &&
                     !line.lowercased().contains("embed") &&
-                    !line.lowercased().contains("genius")
+                    !line.lowercased().contains("genius") &&
+                    !line.lowercased().contains("hot songs") &&
+                    !line.lowercased().contains("trending") &&
+                    !line.lowercased().contains("popular")
                 }
             
             if lines.count > lyricLines.count {
