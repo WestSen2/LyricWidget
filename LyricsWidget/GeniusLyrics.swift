@@ -50,10 +50,16 @@ struct GeniusLyrics {
         
         var containerContent = (html as NSString).substring(with: containerMatch.range(at: 1))
         
-        // Remove script, style, and other non-content tags
-        containerContent = containerContent.replacingOccurrences(of: #"<script[^>]*>.*?</script>"#, with: "", options: [.regularExpression, .caseInsensitive, .dotMatchesLineSeparators])
-        containerContent = containerContent.replacingOccurrences(of: #"<style[^>]*>.*?</style>"#, with: "", options: [.regularExpression, .caseInsensitive, .dotMatchesLineSeparators])
-        containerContent = containerContent.replacingOccurrences(of: #"<a[^>]*>.*?</a>"#, with: "", options: [.regularExpression, .caseInsensitive, .dotMatchesLineSeparators])
+        // Remove script, style, and other non-content tags using NSRegularExpression
+        if let scriptRegex = try? NSRegularExpression(pattern: #"<script[^>]*>.*?</script>"#, options: [.caseInsensitive, .dotMatchesLineSeparators]) {
+            containerContent = scriptRegex.stringByReplacingMatches(in: containerContent, options: [], range: NSRange(containerContent.startIndex..., in: containerContent), withTemplate: "")
+        }
+        if let styleRegex = try? NSRegularExpression(pattern: #"<style[^>]*>.*?</style>"#, options: [.caseInsensitive, .dotMatchesLineSeparators]) {
+            containerContent = styleRegex.stringByReplacingMatches(in: containerContent, options: [], range: NSRange(containerContent.startIndex..., in: containerContent), withTemplate: "")
+        }
+        if let linkRegex = try? NSRegularExpression(pattern: #"<a[^>]*>.*?</a>"#, options: [.caseInsensitive, .dotMatchesLineSeparators]) {
+            containerContent = linkRegex.stringByReplacingMatches(in: containerContent, options: [], range: NSRange(containerContent.startIndex..., in: containerContent), withTemplate: "")
+        }
         
         // Extract text from divs that likely contain lyrics (not metadata)
         // Look for divs that don't have class attributes with "Contributor" or "Translation"
