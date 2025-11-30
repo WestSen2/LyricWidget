@@ -57,6 +57,7 @@ struct SpotifyTrack: Codable {
     let artists: [Artist]
     let album: Album?
     let durationMs: Int?
+    let id: String?
 
     struct Artist: Codable { let name: String }
 
@@ -66,7 +67,7 @@ struct SpotifyTrack: Codable {
     }
     
     enum CodingKeys: String, CodingKey {
-        case name, artists, album
+        case name, artists, album, id
         case durationMs = "duration_ms"
     }
 }

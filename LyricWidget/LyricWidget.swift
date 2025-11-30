@@ -19,7 +19,8 @@ struct Provider: AppIntentTimelineProvider {
             currentLyric: "She was more like a beauty queen from a movie scene",
             allLyrics: [],
             playbackPositionMs: nil,
-            trackDurationMs: nil
+            trackDurationMs: nil,
+            trackId: nil
         )
     }
 
@@ -32,13 +33,13 @@ struct Provider: AppIntentTimelineProvider {
     func timeline(for configuration: ConfigurationAppIntent, in context: Context) async -> Timeline<SimpleEntry> {
         let currentEntry = await fetchCurrentEntry()
         
-        // Create timeline entries that update every 5 seconds to sync with playback
+        // Create timeline entries that update every 3 seconds to sync with playback
         var entries: [SimpleEntry] = []
         let now = Date()
         
-        // Create entries for the next 3 minutes, updating every 3 seconds for smoother scrolling
+        // Create entries for the next 2 minutes, updating every 3 seconds for smoother scrolling
         // Each entry will calculate the correct lyric based on playback position
-        for i in 0..<60 { // 60 entries = 3 minutes at 3-second intervals
+        for i in 0..<40 { // 40 entries = 2 minutes at 3-second intervals
             let entryDate = now.addingTimeInterval(TimeInterval(i * 3))
             let estimatedProgressMs = (currentEntry.playbackPositionMs ?? 0) + (i * 3000) // Add 3 seconds per entry
             
@@ -57,12 +58,13 @@ struct Provider: AppIntentTimelineProvider {
                 currentLyric: getLyricForIndex(lyricIndex, lyrics: currentEntry.allLyrics),
                 allLyrics: currentEntry.allLyrics,
                 playbackPositionMs: estimatedProgressMs,
-                trackDurationMs: currentEntry.trackDurationMs
+                trackDurationMs: currentEntry.trackDurationMs,
+                trackId: currentEntry.trackId
             )
             entries.append(entry)
         }
         
-        // Refresh every 5 seconds for smoother scrolling
+        // Refresh every 5 seconds to detect song changes quickly
         let nextUpdate = Calendar.current.date(byAdding: .second, value: 5, to: now) ?? now
         return Timeline(entries: entries, policy: .after(nextUpdate))
     }
@@ -103,7 +105,8 @@ struct Provider: AppIntentTimelineProvider {
                 currentLyric: "No song currently playing",
                 allLyrics: [],
                 playbackPositionMs: nil,
-                trackDurationMs: nil
+                trackDurationMs: nil,
+                trackId: nil
             )
         }
         
@@ -118,7 +121,8 @@ struct Provider: AppIntentTimelineProvider {
                 currentLyric: "Make sure music is playing on Spotify",
                 allLyrics: [],
                 playbackPositionMs: nil,
-                trackDurationMs: nil
+                trackDurationMs: nil,
+                trackId: nil
             )
         }
         
@@ -142,7 +146,8 @@ struct Provider: AppIntentTimelineProvider {
             currentLyric: currentLyric,
             allLyrics: lyricLines,
             playbackPositionMs: playbackInfo.progressMs,
-            trackDurationMs: track.durationMs
+            trackDurationMs: track.durationMs,
+            trackId: track.id
         )
     }
     
@@ -174,6 +179,7 @@ struct SimpleEntry: TimelineEntry {
     let allLyrics: [String]
     let playbackPositionMs: Int? // Current playback position in milliseconds
     let trackDurationMs: Int? // Total track duration
+    let trackId: String? // Track ID to detect song changes
 }
 
 struct LyricWidgetEntryView : View {
@@ -261,6 +267,7 @@ struct LyricWidget: Widget {
         currentLyric: "She was more like a beauty queen from a movie scene",
         allLyrics: ["She was more like a beauty queen from a movie scene", "I said don't mind, but what do you mean I am the one"],
         playbackPositionMs: 30000,
-        trackDurationMs: 294000
+        trackDurationMs: 294000,
+        trackId: "test-id"
     )
 }

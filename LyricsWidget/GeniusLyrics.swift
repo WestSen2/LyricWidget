@@ -42,13 +42,21 @@ struct GeniusLyrics {
 
     // Parse lyrics from Genius HTML - they're in <div data-lyrics-container>
     private static func parseLyricsDiv(_ html: String) -> String? {
-        // Find the main lyrics container - match until the closing tag (greedy to get full content)
-        let containerPattern = #"<div[^>]*data-lyrics-container[^>]*>(.*)</div>"#
-        guard let containerRegex = try? NSRegularExpression(pattern: containerPattern, options: [.dotMatchesLineSeparators, .caseInsensitive]),
-              let containerMatch = containerRegex.firstMatch(in: html, options: [], range: NSRange(html.startIndex..., in: html))
-        else { return nil }
+        // Try to find the lyrics container more specifically
+        // Genius uses nested divs, we want the innermost content
+        var containerContent: String? = nil
         
-        var containerContent = (html as NSString).substring(with: containerMatch.range(at: 1))
+        // Method 1: Find data-lyrics-container and extract nested content
+        let containerPattern = #"<div[^>]*data-lyrics-container[^>]*>(.*?)</div>"#
+        if let containerRegex = try? NSRegularExpression(pattern: containerPattern, options: [.dotMatchesLineSeparators, .caseInsensitive]) {
+            let matches = containerRegex.matches(in: html, options: [], range: NSRange(html.startIndex..., in: html))
+            // Get the last match (usually the main lyrics container, not nested ones)
+            if let lastMatch = matches.last, lastMatch.numberOfRanges > 1 {
+                containerContent = (html as NSString).substring(with: lastMatch.range(at: 1))
+            }
+        }
+        
+        guard var containerContent = containerContent else { return nil }
         
         // Remove script, style, and other non-content tags using NSRegularExpression
         if let scriptRegex = try? NSRegularExpression(pattern: #"<script[^>]*>.*?</script>"#, options: [.caseInsensitive, .dotMatchesLineSeparators]) {
@@ -84,12 +92,29 @@ struct GeniusLyrics {
                                      text.lowercased().contains("hot songs") ||
                                      text.lowercased().contains("trending") ||
                                      text.lowercased().contains("popular") ||
-                                     text.lowercased().contains("you might also like")
+                                     text.lowercased().contains("you might also like") ||
+                                     text.lowercased().contains("sign up") ||
+                                     text.lowercased().contains("drop knowledge") ||
+                                     text.lowercased().contains("all artists") ||
+                                     text.lowercased().contains("verified artist") ||
+                                     text.lowercased().contains("follow") ||
+                                     text.lowercased().contains("subscribe") ||
+                                     text.lowercased().contains("login") ||
+                                     text.lowercased().contains("create account") ||
+                                     text.lowercased().contains("more on genius") ||
+                                     text.lowercased().starts(with: "all ") ||
+                                     text.range(of: #"^[A-Z][a-z]+\s+[A-Z][a-z]+:"#, options: .regularExpression) != nil // Matches "All Artists:" pattern
+            
+            // Additional check: filter out lines that look like navigation/UI elements
+            let looksLikeNavigation = text.count < 20 && (
+                text.contains(":") && text.split(separator: ":").count == 2 && text.split(separator: ":").last?.trimmingCharacters(in: .whitespaces).isEmpty == true
+            )
             
             if text.count > 5 && // Longer minimum to filter out short metadata
                !text.allSatisfy({ $0.isNumber || $0.isWhitespace || $0.isPunctuation }) &&
                !isJustNumbers &&
-               !hasMetadataKeywords {
+               !hasMetadataKeywords &&
+               !looksLikeNavigation {
                 lyricLines.append(text)
             }
         }
@@ -106,14 +131,26 @@ struct GeniusLyrics {
                 .flatMap { $0.components(separatedBy: "\n") }
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { line in
-                    line.count > 5 &&
-                    !line.lowercased().contains("contributor") &&
-                    !line.lowercased().contains("translation") &&
-                    !line.lowercased().contains("embed") &&
-                    !line.lowercased().contains("genius") &&
-                    !line.lowercased().contains("hot songs") &&
-                    !line.lowercased().contains("trending") &&
-                    !line.lowercased().contains("popular")
+                    let lowercased = line.lowercased()
+                    return line.count > 5 &&
+                    !lowercased.contains("contributor") &&
+                    !lowercased.contains("translation") &&
+                    !lowercased.contains("embed") &&
+                    !lowercased.contains("genius") &&
+                    !lowercased.contains("hot songs") &&
+                    !lowercased.contains("trending") &&
+                    !lowercased.contains("popular") &&
+                    !lowercased.contains("sign up") &&
+                    !lowercased.contains("drop knowledge") &&
+                    !lowercased.contains("all artists") &&
+                    !lowercased.contains("verified artist") &&
+                    !lowercased.contains("follow") &&
+                    !lowercased.contains("subscribe") &&
+                    !lowercased.contains("login") &&
+                    !lowercased.contains("create account") &&
+                    !lowercased.contains("more on genius") &&
+                    !lowercased.starts(with: "all ") &&
+                    line.range(of: #"^[A-Z][a-z]+\s+[A-Z][a-z]+:"#, options: .regularExpression) == nil
                 }
             
             if lines.count > lyricLines.count {
