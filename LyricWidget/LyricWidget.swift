@@ -163,32 +163,6 @@ struct Provider: AppIntentTimelineProvider {
             return nil
         }
     }
-    
-    // Calculate which lyric line should be shown based on playback position
-    private func calculateLyricIndex(progressMs: Int, durationMs: Int?, totalLyrics: Int) -> Int {
-        guard totalLyrics > 0 else { return 0 }
-        guard let duration = durationMs, duration > 0 else {
-            // If no duration, estimate 4 seconds per lyric line
-            return min(progressMs / 4000, totalLyrics - 1)
-        }
-        
-        // Calculate progress as a percentage
-        let progressPercent = Double(progressMs) / Double(duration)
-        
-        // Map to lyric index (assuming lyrics are evenly distributed throughout the song)
-        let lyricIndex = Int(progressPercent * Double(totalLyrics))
-        
-        return min(max(lyricIndex, 0), totalLyrics - 1)
-    }
-    
-    // Get the lyric line for a given index, with bounds checking
-    private func getLyricForIndex(_ index: Int, lyrics: [String]) -> String {
-        guard !lyrics.isEmpty else { return "No lyrics available" }
-        guard index >= 0 && index < lyrics.count else {
-            return lyrics.last ?? "No lyrics available"
-        }
-        return lyrics[index]
-    }
 }
 
 struct SimpleEntry: TimelineEntry {

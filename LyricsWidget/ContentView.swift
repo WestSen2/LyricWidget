@@ -285,7 +285,11 @@ final class ContextProvider: NSObject, ASWebAuthenticationPresentationContextPro
             // If no window exists, create one using the window scene
             return ASPresentationAnchor(windowScene: windowScene)
         }
-        // Fallback: create a basic window (should rarely happen)
-        return UIWindow()
+        // Fallback: create a basic window with a window scene (should rarely happen)
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            return UIWindow(windowScene: windowScene)
+        }
+        // Last resort fallback
+        return UIWindow(frame: UIScreen.main.bounds)
     }
 }
