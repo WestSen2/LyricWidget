@@ -16,7 +16,8 @@ struct LyricWidgetHelper {
 
         do {
             let (data, _) = try await URLSession.shared.data(for: request)
-            let track = try JSONDecoder().decode(SpotifyTrack.self, from: data)
+            guard let playbackInfo = try? JSONDecoder().decode(SpotifyPlaybackInfo.self, from: data),
+                  let track = playbackInfo.item else { return }
 
             // Genius lyrics
             let lyrics = try await GeniusLyrics.fetch(for: track.name,
@@ -55,12 +56,31 @@ struct SpotifyTrack: Codable {
     let name: String
     let artists: [Artist]
     let album: Album?
+    let durationMs: Int?
 
     struct Artist: Codable { let name: String }
 
     struct Album: Codable {
         let images: [Image]
         struct Image: Codable { let url: String }
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case name, artists, album
+        case durationMs = "duration_ms"
+    }
+}
+
+// MARK: - Spotify Playback Info
+struct SpotifyPlaybackInfo: Codable {
+    let progressMs: Int
+    let isPlaying: Bool
+    let item: SpotifyTrack?
+    
+    enum CodingKeys: String, CodingKey {
+        case progressMs = "progress_ms"
+        case isPlaying = "is_playing"
+        case item
     }
 }
 

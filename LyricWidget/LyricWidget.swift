@@ -17,7 +17,9 @@ struct Provider: AppIntentTimelineProvider {
             songTitle: "Billie Jean",
             artistName: "Michael Jackson",
             currentLyric: "She was more like a beauty queen from a movie scene",
-            allLyrics: []
+            allLyrics: [],
+            playbackPositionMs: nil,
+            trackDurationMs: nil
         )
     }
 
@@ -30,30 +32,65 @@ struct Provider: AppIntentTimelineProvider {
     func timeline(for configuration: ConfigurationAppIntent, in context: Context) async -> Timeline<SimpleEntry> {
         let currentEntry = await fetchCurrentEntry()
         
-        // Create entries for the next few minutes, updating lyrics every 5 seconds
-        var entries: [SimpleEntry] = [currentEntry]
+        // Create timeline entries that update every 5 seconds to sync with playback
+        var entries: [SimpleEntry] = []
+        let now = Date()
         
-        // If we have lyrics, create timeline entries for the next 2 minutes
-        if !currentEntry.allLyrics.isEmpty {
-            let startDate = Date()
-            for (index, lyric) in currentEntry.allLyrics.enumerated() {
-                if index >= 24 { break } // Limit to 24 entries (2 minutes at 5 sec intervals)
-                let entryDate = startDate.addingTimeInterval(TimeInterval(index * 5))
-                let entry = SimpleEntry(
-                    date: entryDate,
-                    configuration: configuration,
-                    songTitle: currentEntry.songTitle,
-                    artistName: currentEntry.artistName,
-                    currentLyric: lyric,
-                    allLyrics: currentEntry.allLyrics
-                )
-                entries.append(entry)
-            }
+        // Create entries for the next 2 minutes, updating every 5 seconds
+        // Each entry will calculate the correct lyric based on playback position
+        for i in 0..<24 { // 24 entries = 2 minutes at 5-second intervals
+            let entryDate = now.addingTimeInterval(TimeInterval(i * 5))
+            let estimatedProgressMs = (currentEntry.playbackPositionMs ?? 0) + (i * 5000) // Add 5 seconds per entry
+            
+            // Calculate which lyric line to show based on playback position
+            let lyricIndex = calculateLyricIndex(
+                progressMs: estimatedProgressMs,
+                durationMs: currentEntry.trackDurationMs,
+                totalLyrics: currentEntry.allLyrics.count
+            )
+            
+            let entry = SimpleEntry(
+                date: entryDate,
+                configuration: configuration,
+                songTitle: currentEntry.songTitle,
+                artistName: currentEntry.artistName,
+                currentLyric: getLyricForIndex(lyricIndex, lyrics: currentEntry.allLyrics),
+                allLyrics: currentEntry.allLyrics,
+                playbackPositionMs: estimatedProgressMs,
+                trackDurationMs: currentEntry.trackDurationMs
+            )
+            entries.append(entry)
         }
         
-        // Refresh every 30 seconds to check for new songs
-        let nextUpdate = Calendar.current.date(byAdding: .second, value: 30, to: Date()) ?? Date()
+        // Refresh every 10 seconds to keep synced with playback
+        let nextUpdate = Calendar.current.date(byAdding: .second, value: 10, to: now) ?? now
         return Timeline(entries: entries, policy: .after(nextUpdate))
+    }
+    
+    // Calculate which lyric line should be shown based on playback position
+    private func calculateLyricIndex(progressMs: Int, durationMs: Int?, totalLyrics: Int) -> Int {
+        guard totalLyrics > 0 else { return 0 }
+        guard let duration = durationMs, duration > 0 else {
+            // If no duration, estimate 4 seconds per lyric line
+            return min(progressMs / 4000, totalLyrics - 1)
+        }
+        
+        // Calculate progress as a percentage
+        let progressPercent = Double(progressMs) / Double(duration)
+        
+        // Map to lyric index (assuming lyrics are evenly distributed throughout the song)
+        let lyricIndex = Int(progressPercent * Double(totalLyrics))
+        
+        return min(max(lyricIndex, 0), totalLyrics - 1)
+    }
+    
+    // Get the lyric line for a given index, with bounds checking
+    private func getLyricForIndex(_ index: Int, lyrics: [String]) -> String {
+        guard !lyrics.isEmpty else { return "No lyrics available" }
+        guard index >= 0 && index < lyrics.count else {
+            return lyrics.last ?? "No lyrics available"
+        }
+        return lyrics[index]
     }
     
     private func fetchCurrentEntry() async -> SimpleEntry {
@@ -64,19 +101,24 @@ struct Provider: AppIntentTimelineProvider {
                 songTitle: "Not Playing",
                 artistName: "Login to Spotify",
                 currentLyric: "No song currently playing",
-                allLyrics: []
+                allLyrics: [],
+                playbackPositionMs: nil,
+                trackDurationMs: nil
             )
         }
         
-        // Fetch current track from Spotify
-        guard let track = await fetchSpotifyTrack(token: spotifyToken) else {
+        // Fetch current playback info from Spotify (includes track and progress)
+        guard let playbackInfo = await fetchSpotifyPlaybackInfo(token: spotifyToken),
+              let track = playbackInfo.item else {
             return SimpleEntry(
                 date: Date(),
                 configuration: ConfigurationAppIntent(),
                 songTitle: "Not Playing",
                 artistName: "No track found",
                 currentLyric: "Make sure music is playing on Spotify",
-                allLyrics: []
+                allLyrics: [],
+                playbackPositionMs: nil,
+                trackDurationMs: nil
             )
         }
         
@@ -84,17 +126,27 @@ struct Provider: AppIntentTimelineProvider {
         let lyrics = try? await GeniusLyrics.fetch(for: track.name, artist: track.artists.first?.name ?? "")
         let lyricLines = lyrics?.components(separatedBy: CharacterSet.newlines).filter { !$0.isEmpty } ?? []
         
+        // Calculate which lyric line to show based on current playback position
+        let lyricIndex = calculateLyricIndex(
+            progressMs: playbackInfo.progressMs,
+            durationMs: track.durationMs,
+            totalLyrics: lyricLines.count
+        )
+        let currentLyric = getLyricForIndex(lyricIndex, lyrics: lyricLines)
+        
         return SimpleEntry(
             date: Date(),
             configuration: ConfigurationAppIntent(),
             songTitle: track.name,
             artistName: track.artists.first?.name ?? "Unknown Artist",
-            currentLyric: lyricLines.first ?? "Loading lyrics...",
-            allLyrics: lyricLines
+            currentLyric: currentLyric,
+            allLyrics: lyricLines,
+            playbackPositionMs: playbackInfo.progressMs,
+            trackDurationMs: track.durationMs
         )
     }
     
-    private func fetchSpotifyTrack(token: String) async -> SpotifyTrack? {
+    private func fetchSpotifyPlaybackInfo(token: String) async -> SpotifyPlaybackInfo? {
         guard let url = URL(string: "https://api.spotify.com/v1/me/player/currently-playing") else { return nil }
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -104,17 +156,38 @@ struct Provider: AppIntentTimelineProvider {
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else { return nil }
             
-            // Parse the nested JSON structure
-            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let item = json["item"] as? [String: Any] else { return nil }
-            
-            // Convert to SpotifyTrack format
-            let itemData = try JSONSerialization.data(withJSONObject: item)
-            return try JSONDecoder().decode(SpotifyTrack.self, from: itemData)
+            // Decode the full playback info (includes progress_ms and item)
+            return try JSONDecoder().decode(SpotifyPlaybackInfo.self, from: data)
         } catch {
-            print("Widget: Failed to fetch Spotify track: \(error)")
+            print("Widget: Failed to fetch Spotify playback info: \(error)")
             return nil
         }
+    }
+    
+    // Calculate which lyric line should be shown based on playback position
+    private func calculateLyricIndex(progressMs: Int, durationMs: Int?, totalLyrics: Int) -> Int {
+        guard totalLyrics > 0 else { return 0 }
+        guard let duration = durationMs, duration > 0 else {
+            // If no duration, estimate 4 seconds per lyric line
+            return min(progressMs / 4000, totalLyrics - 1)
+        }
+        
+        // Calculate progress as a percentage
+        let progressPercent = Double(progressMs) / Double(duration)
+        
+        // Map to lyric index (assuming lyrics are evenly distributed throughout the song)
+        let lyricIndex = Int(progressPercent * Double(totalLyrics))
+        
+        return min(max(lyricIndex, 0), totalLyrics - 1)
+    }
+    
+    // Get the lyric line for a given index, with bounds checking
+    private func getLyricForIndex(_ index: Int, lyrics: [String]) -> String {
+        guard !lyrics.isEmpty else { return "No lyrics available" }
+        guard index >= 0 && index < lyrics.count else {
+            return lyrics.last ?? "No lyrics available"
+        }
+        return lyrics[index]
     }
 }
 
@@ -125,6 +198,8 @@ struct SimpleEntry: TimelineEntry {
     let artistName: String
     let currentLyric: String
     let allLyrics: [String]
+    let playbackPositionMs: Int? // Current playback position in milliseconds
+    let trackDurationMs: Int? // Total track duration
 }
 
 struct LyricWidgetEntryView : View {
@@ -179,6 +254,8 @@ struct LyricWidget: Widget {
         songTitle: "Billie Jean",
         artistName: "Michael Jackson",
         currentLyric: "She was more like a beauty queen from a movie scene",
-        allLyrics: ["She was more like a beauty queen from a movie scene", "I said don't mind, but what do you mean I am the one"]
+        allLyrics: ["She was more like a beauty queen from a movie scene", "I said don't mind, but what do you mean I am the one"],
+        playbackPositionMs: 30000,
+        trackDurationMs: 294000
     )
 }

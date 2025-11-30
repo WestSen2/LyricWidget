@@ -65,7 +65,8 @@ extension LyricWidgetLiveActivity {
             var spotifyReq = URLRequest(url: spotifyURL)
             spotifyReq.setValue("Bearer \(spotifyToken)", forHTTPHeaderField: "Authorization")
             let (spotifyData, _) = try await URLSession.shared.data(for: spotifyReq)
-            guard let track = try? JSONDecoder().decode(SpotifyTrack.self, from: spotifyData) else { return }
+            guard let playbackInfo = try? JSONDecoder().decode(SpotifyPlaybackInfo.self, from: spotifyData),
+                  let track = playbackInfo.item else { return }
 
             // 2. Plain-text lyrics from Genius
             let lyrics = try await GeniusLyrics.fetch(for: track.name,
