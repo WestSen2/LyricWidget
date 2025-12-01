@@ -70,15 +70,23 @@ struct Provider: AppIntentTimelineProvider {
     }
     
     // Calculate which lyric line should be shown based on playback position
+    // We apply a small global offset so lyrics start a bit after the intro,
+    // which better matches most songs when using plain-text (non-timed) lyrics.
     private func calculateLyricIndex(progressMs: Int, durationMs: Int?, totalLyrics: Int) -> Int {
         guard totalLyrics > 0 else { return 0 }
+        
+        // Global offset (in ms) to account for intros / silence before vocals.
+        // You can tweak this if lyrics consistently feel early/late.
+        let offsetMs = 3000 // 3 seconds
+        let adjustedProgressMs = max(progressMs - offsetMs, 0)
+        
         guard let duration = durationMs, duration > 0 else {
             // If no duration, estimate 4 seconds per lyric line
-            return min(progressMs / 4000, totalLyrics - 1)
+            return min(adjustedProgressMs / 4000, totalLyrics - 1)
         }
         
         // Calculate progress as a percentage
-        let progressPercent = Double(progressMs) / Double(duration)
+        let progressPercent = Double(adjustedProgressMs) / Double(duration)
         
         // Map to lyric index (assuming lyrics are evenly distributed throughout the song)
         let lyricIndex = Int(progressPercent * Double(totalLyrics))
