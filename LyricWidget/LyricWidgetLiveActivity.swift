@@ -68,6 +68,10 @@ extension LyricWidgetLiveActivity {
             guard let playbackInfo = try? JSONDecoder().decode(SpotifyPlaybackInfo.self, from: spotifyData),
                   let track = playbackInfo.item else { return }
 
+            // 1b. Ask the home-screen widget to refresh so it stays in sync
+            // with the Live Activity's current song.
+            WidgetCenter.shared.reloadTimelines(ofKind: "LyricWidgetWidget")
+
             // 2. Plain-text lyrics from Genius
             let lyrics = try await GeniusLyrics.fetch(for: track.name,
                                                       artist: track.artists.first?.name ?? "")
