@@ -193,6 +193,15 @@ struct SimpleEntry: TimelineEntry {
 struct LyricWidgetEntryView : View {
     var entry: Provider.Entry
     
+    // Format milliseconds into m:ss
+    private func formatTime(_ ms: Int?) -> String {
+        guard let ms = ms, ms >= 0 else { return "--:--" }
+        let totalSeconds = ms / 1000
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+    
     // Get visible lyrics with current line in center
     private var visibleLyrics: [(text: String, isCurrent: Bool)] {
         guard !entry.allLyrics.isEmpty else {
@@ -227,6 +236,11 @@ struct LyricWidgetEntryView : View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
+                
+                // Current playback time
+                Text(formatTime(entry.playbackPositionMs))
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
             }
             
             Divider()
