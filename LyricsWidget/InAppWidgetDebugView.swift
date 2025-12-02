@@ -18,15 +18,17 @@ struct InAppWidgetDebugView: View {
         return String(format: "%d:%02d", minutes, seconds)
     }
 
-    // Returns up to 5 visible lines around the current index
+    // Returns up to 10 visible lines around the current index
     private var visibleLyrics: [(text: String, isCurrent: Bool)] {
         guard !lyrics.isEmpty else {
             return [(statusText.isEmpty ? "No lyrics loaded" : statusText, true)]
         }
 
         let safeIndex = min(max(currentIndex, 0), lyrics.count - 1)
-        let startIndex = max(0, safeIndex - 2)
-        let endIndex = min(lyrics.count, safeIndex + 3)
+        let contextBefore = 4
+        let contextAfter = 5
+        let startIndex = max(0, safeIndex - contextBefore)
+        let endIndex = min(lyrics.count, safeIndex + contextAfter + 1)
 
         var result: [(String, Bool)] = []
         for i in startIndex..<endIndex {

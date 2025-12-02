@@ -130,8 +130,10 @@ struct ContentView: View {
     @State private var debugCurrentIndex: Int = 0
     @State private var debugPlaybackMs: Int = 0
     @State private var debugDurationMs: Int = 240_000 // default 4 minutes
-    @State private var debugTimer: Timer?
+    @State private var debugTask: Task<Void, Never>?
+    @State private var debugTrackId: String?
     @State private var debugStatus: String = ""
+    @State private var liveActivityStatus: String = ""
 
     // Credentials
     private let spotifyClientID = "1dfc9705a8f943e9a6774ea2307c488a"
@@ -170,6 +172,12 @@ struct ContentView: View {
             }
             .buttonStyle(LoginButtonStyle(color: activityStarted ? .gray : .blue))
             .disabled(activityStarted)
+            if !liveActivityStatus.isEmpty {
+                Text(liveActivityStatus)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
             // In-app widget debug toggle
             Button(showWidgetDebug ? "Hide In-App Widget Debug" : "Show In-App Widget Debug") {
@@ -302,50 +310,93 @@ struct ContentView: View {
         debugLyrics = []
         debugCurrentIndex = 0
         debugPlaybackMs = 0
+        debugTrackId = nil
+        debugTask?.cancel()
 
-        // Fetch lyrics once using the same Genius helper as the widget
-        Task {
-            do {
-                let lyrics = try await GeniusLyrics.fetch(for: songTitle, artist: artistName)
-                let lines = lyrics
-                    .components(separatedBy: .newlines)
-                    .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-
-                await MainActor.run {
-                    self.debugLyrics = lines
-                    self.debugStatus = lines.isEmpty ? "No lyrics found." : "Debug view running…"
-                    self.startDebugTimer()
-                }
-            } catch {
-                await MainActor.run {
-                    self.debugStatus = "Failed to load lyrics."
-                }
+        debugTask = Task {
+            while !Task.isCancelled {
+                await updateDebugState()
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
             }
         }
     }
 
-    private func startDebugTimer() {
-        debugTimer?.invalidate()
-        debugPlaybackMs = 0
-        debugCurrentIndex = 0
+    private func stopWidgetDebug() {
+        debugTask?.cancel()
+        debugTask = nil
+        debugTrackId = nil
+        debugStatus = ""
+    }
 
-        // For debugging, just advance time locally every second.
-        debugTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-            debugPlaybackMs += 1_000
+    private func updateDebugState() async {
+        guard !accessToken.isEmpty else {
+            await MainActor.run {
+                self.debugStatus = "Login to Spotify to see the real playback state."
+            }
+            return
+        }
 
-            let idx = calculateDebugLyricIndex(
-                progressMs: debugPlaybackMs,
-                durationMs: debugDurationMs,
-                totalLyrics: debugLyrics.count
+        do {
+            let playbackInfo = try await fetchPlaybackInfo()
+            guard let track = playbackInfo.item else {
+                throw SpotifyPlaybackError.noTrackPlaying
+            }
+
+            let trackId = track.id
+            let needsFreshLyrics = debugLyrics.isEmpty || trackId != debugTrackId
+            var lines = debugLyrics
+
+            if needsFreshLyrics {
+                let rawLyrics = try await GeniusLyrics.fetch(
+                    for: track.name,
+                    artist: track.artists.first?.name ?? ""
+                )
+                lines = rawLyrics
+                    .components(separatedBy: .newlines)
+                    .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            }
+
+            let lyricIndex = calculateDebugLyricIndex(
+                progressMs: playbackInfo.progressMs,
+                durationMs: track.durationMs,
+                totalLyrics: lines.count
             )
-            debugCurrentIndex = idx
+
+            await MainActor.run {
+                self.songTitle = track.name
+                self.artistName = track.artists.first?.name ?? "Unknown Artist"
+                if needsFreshLyrics {
+                    self.debugLyrics = lines
+                    self.debugTrackId = trackId
+                }
+                self.debugCurrentIndex = lyricIndex
+                self.debugPlaybackMs = playbackInfo.progressMs
+                if let duration = track.durationMs {
+                    self.debugDurationMs = duration
+                }
+                self.debugStatus = lines.isEmpty ? "No lyrics found." : "Debug view running…"
+            }
+        } catch {
+            await MainActor.run {
+                self.debugStatus = "Failed to load lyrics."
+            }
         }
     }
 
-    private func stopWidgetDebug() {
-        debugTimer?.invalidate()
-        debugTimer = nil
-        debugStatus = ""
+    private func fetchPlaybackInfo() async throws -> SpotifyPlaybackInfo {
+        guard let url = URL(string: "https://api.spotify.com/v1/me/player/currently-playing") else {
+            throw SpotifyPlaybackError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.httpMethod = "GET"
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw SpotifyPlaybackError.noTrackPlaying
+        }
+
+        return try JSONDecoder().decode(SpotifyPlaybackInfo.self, from: data)
     }
 
     // Same logic as the widget's calculateLyricIndex, but local to this view
@@ -374,28 +425,55 @@ struct ContentView: View {
 
     // MARK: - Live Activity (Genius)
     private func startLiveActivity() {
-        print("🎯 Start Live Activity button tapped")          // ← ADD
+        Task {
+            await startLiveActivityAsync()
+        }
+    }
+
+    @MainActor
+    private func startLiveActivityAsync() async {
+        liveActivityStatus = ""
         guard !songTitle.isEmpty else {
-            print("⚠️  No song title – aborting")             // ← ADD
+            liveActivityStatus = "Play a song before starting a Live Activity."
             return
         }
+
+        let authorizationStatus = await requestLiveActivityAuthorization()
+        guard authorizationStatus == .authorized else {
+            liveActivityStatus = "Live Activities are not authorized."
+            return
+        }
+
         let attributes = LyricWidgetAttributes(songTitle: songTitle, artistName: artistName)
-        let initial = LyricWidgetAttributes.ContentState(currentLyric: "Fetching lyrics…", elapsedTime: "0:00")
+        let initialState = LyricWidgetAttributes.ContentState(currentLyric: "Fetching lyrics…", elapsedTime: "0:00")
 
         do {
-            print("📦 Requesting Live Activity…")              // ← ADD
-            let content = ActivityContent(state: initial, staleDate: nil)
+            let content = ActivityContent(state: initialState, staleDate: nil)
             activity = try Activity.request(attributes: attributes, content: content, pushType: nil)
             activityStarted = true
-            print("✅ Live Activity started – updating lyrics…")
-            Task {
-                if let activity = activity {
-                    await LyricWidgetLiveActivity.updateActivity(activity, geniusToken: geniusToken)
-                }
+            liveActivityStatus = "Live Activity running."
+            if let activity = activity {
+                await LyricWidgetLiveActivity.updateActivity(activity, geniusToken: geniusToken)
             }
         } catch {
-            print("❌ Live Activity failed: \(error)")         // ← ADD
+            liveActivityStatus = "Failed to start Live Activity."
         }
+    }
+
+    private func requestLiveActivityAuthorization() async -> ActivityAuthorizationStatus {
+        if #available(iOS 17.0, *) {
+            let currentStatus = ActivityAuthorizationCenter.shared.activityAuthorizationStatus
+            if currentStatus != .notDetermined {
+                return currentStatus
+            }
+
+            return await withCheckedContinuation { continuation in
+                ActivityAuthorizationCenter.shared.requestAuthorization { status in
+                    continuation.resume(returning: status)
+                }
+            }
+        }
+        return .notDetermined
     }
 
     // MARK: - Utils
