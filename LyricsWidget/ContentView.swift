@@ -124,6 +124,15 @@ struct ContentView: View {
     @State private var authSession: ASWebAuthenticationSession?   // NEW
     private let contextProvider = ContextProvider()   // NEW – strong ref
 
+    // In-app "widget" debug state
+    @State private var showWidgetDebug = false
+    @State private var debugLyrics: [String] = []
+    @State private var debugCurrentIndex: Int = 0
+    @State private var debugPlaybackMs: Int = 0
+    @State private var debugDurationMs: Int = 240_000 // default 4 minutes
+    @State private var debugTimer: Timer?
+    @State private var debugStatus: String = ""
+
     // Credentials
     private let spotifyClientID = "1dfc9705a8f943e9a6774ea2307c488a"
     private let geniusToken     = "tsfrKGlg9pjvk0d3HlHms-Br6x9E7Pg3dooOBDDAJ5seZFxyKj7rtQNoPw8uAxBT"
@@ -161,6 +170,29 @@ struct ContentView: View {
             }
             .buttonStyle(LoginButtonStyle(color: activityStarted ? .gray : .blue))
             .disabled(activityStarted)
+
+            // In-app widget debug toggle
+            Button(showWidgetDebug ? "Hide In-App Widget Debug" : "Show In-App Widget Debug") {
+                if showWidgetDebug {
+                    stopWidgetDebug()
+                    showWidgetDebug = false
+                } else {
+                    startWidgetDebug()
+                }
+            }
+            .buttonStyle(LoginButtonStyle(color: .orange))
+
+            if showWidgetDebug {
+                InAppWidgetDebugView(
+                    songTitle: songTitle.isEmpty ? "No song" : songTitle,
+                    artistName: artistName.isEmpty ? "Unknown Artist" : artistName,
+                    lyrics: debugLyrics,
+                    currentIndex: debugCurrentIndex,
+                    playbackMs: debugPlaybackMs,
+                    statusText: debugStatus
+                )
+                .frame(maxHeight: 220)
+            }
         }
         .padding()
     }
@@ -254,6 +286,90 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    // MARK: - In-app widget debug helpers
+
+    private func startWidgetDebug() {
+        guard !songTitle.isEmpty, !artistName.isEmpty else {
+            debugStatus = "Play a song first, then try again."
+            showWidgetDebug = true
+            return
+        }
+
+        debugStatus = "Loading lyrics…"
+        showWidgetDebug = true
+        debugLyrics = []
+        debugCurrentIndex = 0
+        debugPlaybackMs = 0
+
+        // Fetch lyrics once using the same Genius helper as the widget
+        Task {
+            do {
+                let lyrics = try await GeniusLyrics.fetch(for: songTitle, artist: artistName)
+                let lines = lyrics
+                    .components(separatedBy: .newlines)
+                    .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+
+                await MainActor.run {
+                    self.debugLyrics = lines
+                    self.debugStatus = lines.isEmpty ? "No lyrics found." : "Debug view running…"
+                    self.startDebugTimer()
+                }
+            } catch {
+                await MainActor.run {
+                    self.debugStatus = "Failed to load lyrics."
+                }
+            }
+        }
+    }
+
+    private func startDebugTimer() {
+        debugTimer?.invalidate()
+        debugPlaybackMs = 0
+        debugCurrentIndex = 0
+
+        // For debugging, just advance time locally every second.
+        debugTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            debugPlaybackMs += 1_000
+
+            let idx = calculateDebugLyricIndex(
+                progressMs: debugPlaybackMs,
+                durationMs: debugDurationMs,
+                totalLyrics: debugLyrics.count
+            )
+            debugCurrentIndex = idx
+        }
+    }
+
+    private func stopWidgetDebug() {
+        debugTimer?.invalidate()
+        debugTimer = nil
+        debugStatus = ""
+    }
+
+    // Same logic as the widget's calculateLyricIndex, but local to this view
+    private func calculateDebugLyricIndex(progressMs: Int, durationMs: Int?, totalLyrics: Int) -> Int {
+        guard totalLyrics > 0 else { return 0 }
+
+        let offsetMs = 3_000
+        let adjusted = max(progressMs - offsetMs, 0)
+
+        guard let duration = durationMs, duration > 0 else {
+            return min(adjusted / 4_000, totalLyrics - 1)
+        }
+
+        let percent = Double(adjusted) / Double(duration)
+        let idx = Int(percent * Double(totalLyrics))
+        return min(max(idx, 0), totalLyrics - 1)
+    }
+
+    private func formatDebugTime(_ ms: Int) -> String {
+        guard ms >= 0 else { return "--:--" }
+        let totalSeconds = ms / 1_000
+        let m = totalSeconds / 60
+        let s = totalSeconds % 60
+        return String(format: "%d:%02d", m, s)
     }
 
     // MARK: - Live Activity (Genius)
