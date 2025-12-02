@@ -456,6 +456,7 @@ struct ContentView: View {
             }
         } catch {
             liveActivityStatus = "Failed to start Live Activity."
+            print("Live Activity request failed:", error)
         }
     }
 
