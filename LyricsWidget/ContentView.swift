@@ -433,6 +433,10 @@ struct ContentView: View {
     @MainActor
     private func startLiveActivityAsync() async {
         liveActivityStatus = ""
+        guard #available(iOS 17.0, *) else {
+            liveActivityStatus = "Live Activities require iOS 17."
+            return
+        }
         guard !songTitle.isEmpty else {
             liveActivityStatus = "Play a song before starting a Live Activity."
             return
@@ -460,20 +464,18 @@ struct ContentView: View {
         }
     }
 
+    @available(iOS 17.0, *)
     private func requestLiveActivityAuthorization() async -> ActivityAuthorizationStatus {
-        if #available(iOS 17.0, *) {
-            let currentStatus = ActivityAuthorizationCenter.shared.activityAuthorizationStatus
-            if currentStatus != .notDetermined {
-                return currentStatus
-            }
+        let currentStatus = ActivityAuthorizationCenter.shared.activityAuthorizationStatus
+        if currentStatus != .notDetermined {
+            return currentStatus
+        }
 
-            return await withCheckedContinuation { continuation in
-                ActivityAuthorizationCenter.shared.requestAuthorization { status in
-                    continuation.resume(returning: status)
-                }
+        return await withCheckedContinuation { continuation in
+            ActivityAuthorizationCenter.shared.requestAuthorization { status in
+                continuation.resume(returning: status)
             }
         }
-        return .notDetermined
     }
 
     // MARK: - Utils
