@@ -433,18 +433,13 @@ struct ContentView: View {
     @MainActor
     private func startLiveActivityAsync() async {
         liveActivityStatus = ""
-        guard #available(iOS 17.0, *) else {
-            liveActivityStatus = "Live Activities require iOS 17."
-            return
-        }
-        guard !songTitle.isEmpty else {
-            liveActivityStatus = "Play a song before starting a Live Activity."
+        guard #available(iOS 16.1, *) else {
+            liveActivityStatus = "Live Activities require iOS 16.1+."
             return
         }
 
-        let authorizationStatus = await requestLiveActivityAuthorization()
-        guard authorizationStatus == .authorized else {
-            liveActivityStatus = "Live Activities are not authorized."
+        guard !songTitle.isEmpty else {
+            liveActivityStatus = "Play a song before starting a Live Activity."
             return
         }
 
@@ -461,20 +456,6 @@ struct ContentView: View {
             }
         } catch {
             liveActivityStatus = "Failed to start Live Activity."
-        }
-    }
-
-    @available(iOS 17.0, *)
-    private func requestLiveActivityAuthorization() async -> ActivityAuthorizationStatus {
-        let currentStatus = ActivityAuthorizationCenter.shared.activityAuthorizationStatus
-        if currentStatus != .notDetermined {
-            return currentStatus
-        }
-
-        return await withCheckedContinuation { continuation in
-            ActivityAuthorizationCenter.shared.requestAuthorization { status in
-                continuation.resume(returning: status)
-            }
         }
     }
 
@@ -503,6 +484,10 @@ final class ContextProvider: NSObject, ASWebAuthenticationPresentationContextPro
             return UIWindow(windowScene: windowScene)
         }
         // Last resort fallback
-        return UIWindow(frame: UIScreen.main.bounds)
+        if #available(iOS 26.0, *) {
+            return UIWindow()
+        } else {
+            return UIWindow(frame: UIScreen.main.bounds)
+        }
     }
 }
